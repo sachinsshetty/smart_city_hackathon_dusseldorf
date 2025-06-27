@@ -64,7 +64,7 @@ tools = [
                 "properties": {
                     "start_location": {
                         "type": "string",
-                        "description": "The starting location (e.g., Fürstenwall 172, 40217 Düsseldorf)"
+                        "description": "The starting location (e.g., any address in Düsseldorf)"
                     },
                     "end_location": {
                         "type": "string",
@@ -126,8 +126,8 @@ def capture_webcam_image():
             cv2.imwrite(temp_path, frame)
 
         # Convert image to base64 for API
-        with open(temp_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        with open(temp_path, "rb") as temp_file:
+            base64_image = base64.b64encode(temp_file.read()).decode('utf-8')
 
         # Clean up temporary file
         try:
@@ -164,54 +164,62 @@ def capture_webcam_image():
     except Exception as e:
         return {"error": f"Error capturing webcam image: {str(e)}"}
 
-# Function to get travel information from Infosys to Düsseldorf HBF
+# Function to get travel information dynamically
 def get_travel_information(start_location, end_location):
     try:
-        if start_location.lower() == "fürstenwall 172, 40217 düsseldorf" and end_location.lower() == "düsseldorf hbf":
-            # Static travel information based on web results
-            travel_options = {
-                "start_location": start_location,
-                "end_location": end_location,
-                "options": [
-                    {
-                        "mode": "Tram",
-                        "details": (
-                            "Walk approximately 5 minutes from Fürstenwall 172 to the nearest tram stop, Fürstenwall/Corneliusstraße. "
-                            "Take tram line 706 or 709 towards Düsseldorf HBF. The journey takes about 10-12 minutes, with trams running every 10-20 minutes. "
-                            "Get off at Düsseldorf HBF. Total travel time is approximately 15-17 minutes."
-                        ),
-                        "source": "General knowledge of Düsseldorf public transport (Rheinbahn)"
-                    },
-                    {
-                        "mode": "Walking",
-                        "details": (
-                            "Walk from Fürstenwall 172 to Düsseldorf HBF. The distance is about 1.5 km, and it takes approximately 20-25 minutes. "
-                            "Head northeast on Fürstenwall, turn left onto Königsallee, then right onto Berliner Allee, and continue straight to Düsseldorf HBF."
-                        ),
-                        "source": "Estimated based on distance and walking speed"
-                    },
-                    {
-                        "mode": "Bus",
-                        "details": (
-                            "Walk to Fürstenwall/Corneliusstraße (about 5 minutes). Take bus line 723 or 732 towards Düsseldorf HBF. "
-                            "The bus ride takes about 10 minutes, with buses running every 15-30 minutes. Get off at Düsseldorf HBF."
-                        ),
-                        "source": "General knowledge of Düsseldorf public transport (Rheinbahn)"
-                    }
-                ]
-            }
-            return travel_options
+        # Placeholder for dynamic travel information
+        # In a real implementation, this would query an API like Google Maps or Rheinbahn
+        travel_options = {
+            "start_location": start_location,
+            "end_location": end_location,
+            "options": []
+        }
+
+        # Example logic for Düsseldorf HBF as destination
+        if end_location.lower() == "düsseldorf hbf":
+            travel_options["options"].append({
+                "mode": "Public Transport",
+                "details": (
+                    f"From {start_location}, find the nearest tram or bus stop using a navigation app like Rheinbahn or Google Maps. "
+                    "Common lines to Düsseldorf HBF include trams 706, 709, or buses 723, 732. "
+                    "Travel time varies (10-20 minutes depending on distance). Check real-time schedules via the Rheinbahn app."
+                ),
+                "source": "General knowledge of Düsseldorf public transport (Rheinbahn)"
+            })
+            travel_options["options"].append({
+                "mode": "Walking",
+                "details": (
+                    f"Walk from {start_location} to Düsseldorf HBF. Use a navigation app to estimate distance and time (typically 15-30 minutes for 1-2 km). "
+                    "Follow major roads like Königsallee or Berliner Allee if starting from central Düsseldorf."
+                ),
+                "source": "General navigation advice"
+            })
+            travel_options["options"].append({
+                "mode": "Taxi/Uber",
+                "details": (
+                    f"Book a taxi or Uber from {start_location} to Düsseldorf HBF. Travel time is approximately 10-15 minutes depending on traffic. "
+                    "Estimated cost: €10-15."
+                ),
+                "source": "Estimated based on typical taxi fares in Düsseldorf"
+            })
         else:
-            return {"error": f"Travel information only available for Fürstenwall 172, 40217 Düsseldorf to Düsseldorf HBF"}
+            travel_options["options"].append({
+                "mode": "General",
+                "details": (
+                    f"To travel from {start_location} to {end_location}, use a navigation app like Google Maps or Rheinbahn to find the best route. "
+                    "Options may include tram, bus, walking, or taxi. Travel time and cost depend on the distance and mode of transport."
+                ),
+                "source": "General navigation advice"
+            })
+
+        return travel_options
     except Exception as e:
         return {"error": f"Failed to fetch travel information: {str(e)}"}
 
 def chat_with_qwen3():
     user_prompts = [
-        "What do you see?",
-        "What is the time in Bengaluru?",
-        "What is the time in Bonn?",
-        "I want to travel from Infosys to Düsseldorf HBF. Provide travel information."
+        "I want to travel from Fürstenwall 172, 40217 Düsseldorf to Düsseldorf HBF. Provide travel information.",
+        "I want to travel from Infosys, Düsseldorf to Düsseldorf Football stadium. Provide travel information."
     ]
     messages = []
 
@@ -252,7 +260,7 @@ def chat_with_qwen3():
                             })
                         elif tool_call.function.name == "get_travel_information":
                             args = json.loads(tool_call.function.arguments)
-                            start_location = args.get("start_location", "Fürstenwall 172, 40217 Düsseldorf")
+                            start_location = args.get("start_location", "Unknown location")
                             end_location = args.get("end_location", "Düsseldorf HBF")
                             travel_data = get_travel_information(start_location, end_location)
                             messages.append({
