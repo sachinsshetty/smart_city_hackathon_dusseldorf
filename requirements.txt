@@ -1,3 +1,6 @@
 dwani
 requests
 openai
+pytz 
+requests 
+opencv-python
