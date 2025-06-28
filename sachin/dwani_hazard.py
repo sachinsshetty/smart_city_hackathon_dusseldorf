@@ -161,11 +161,8 @@ import json
 
 def chat_with_qwen3():
     user_prompts = [
-        "What do you see?",
-        "Do you see a hazard ?",
-        "Is there a Yellow jacket in the picture?",
-        "how should i move from here to the exit?"
-        "What is the time in Bonn?",
+        "What do you see?, imagine you are assisting blind person locate all the objects",
+        "how should i move from here to the exit?, imagine you are assisting blind person, provide step by step instructions",
     ]
     messages = []
 
