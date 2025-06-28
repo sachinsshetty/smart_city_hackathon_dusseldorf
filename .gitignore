@@ -12,9 +12,10 @@ __pycache__/
 *$py.class
 gemma-3n-E2B-it-ONNX/
 jfk.wav
+output.mp3
 # C extensions
 *.so
-
+conversation_history.json
 # Distribution / packaging
 .Python
 build/
