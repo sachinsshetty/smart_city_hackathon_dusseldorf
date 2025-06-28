@@ -7,3 +7,5 @@ opencv-python
 httpx
 sounddevice 
 wavio
+pyttsx3
+
