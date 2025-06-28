@@ -163,7 +163,9 @@ def chat_with_qwen3():
     user_prompts = [
         "What do you see?",
         "Do you see a hazard ?",
-        "What is the time in Bonn?"
+        "Is there a Yellow jacket in the picture?",
+        "how should i move from here to the exit?"
+        "What is the time in Bonn?",
     ]
     messages = []
 
