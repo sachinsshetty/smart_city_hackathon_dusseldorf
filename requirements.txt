@@ -4,3 +4,6 @@ openai
 pytz 
 requests 
 opencv-python
+httpx
+sounddevice 
+wavio
