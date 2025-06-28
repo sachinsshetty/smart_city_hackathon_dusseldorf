@@ -8,4 +8,3 @@ httpx
 sounddevice 
 wavio
 pyttsx3
-
