@@ -1,34 +1,42 @@
 import io
+import time
 import httpx
 import sounddevice as sd
 import wavio
 
-# Parameters for recording
-duration = 5  # seconds
-sample_rate = 16000  # Hz
-channels = 1  # mono
+# Parameters
+duration = 5  # seconds per chunk
+sample_rate = 16000
+channels = 1
 
-print("Recording...")
+print("Starting continuous recording and transcription. Press Ctrl+C to stop.")
 
-# Record audio from microphone
-audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=channels)
-sd.wait()  # Wait until recording is finished
+try:
+    while True:
+        print("\nRecording...")
+        audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=channels)
+        sd.wait()
 
-print("Recording finished.")
+        print("Sending audio for transcription...")
 
-# Save recorded audio to an in-memory WAV file
-wav_io = io.BytesIO()
-wavio.write(wav_io, audio_data, sample_rate, sampwidth=2)
-wav_io.seek(0)  # Reset pointer to start of file
+        wav_io = io.BytesIO()
+        wavio.write(wav_io, audio_data, sample_rate, sampwidth=2)
+        wav_io.seek(0)
 
-# Prepare files dict for httpx
-files = {
-    'file': ('microphone.wav', wav_io, 'audio/wav'),
-    'model': (None, 'Systran/faster-whisper-small')  # or your required model
-}
+        files = {
+            'file': ('microphone.wav', wav_io, 'audio/wav'),
+            'model': (None, 'Systran/faster-whisper-small')
+        }
 
-# Send POST request
-response = httpx.post('https://dwani-whisper.hf.space/v1/audio/transcriptions', files=files)
+        response = httpx.post('https://dwani-whisper.hf.space/v1/audio/transcriptions', files=files)
 
-print("Response:")
-print(response.text)
+        if response.status_code == 200:
+            print("Transcription:", response.text)
+        else:
+            print(f"Error: {response.status_code} - {response.text}")
+
+        # Optional: small pause before next recording, or start immediately
+        # time.sleep(0.1)
+
+except KeyboardInterrupt:
+    print("\nStopped by user.")
