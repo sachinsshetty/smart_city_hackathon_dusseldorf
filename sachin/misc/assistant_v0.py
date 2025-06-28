@@ -6,6 +6,10 @@ import cv2
 import os
 import tempfile
 import base64
+import io
+import sounddevice as sd
+import wavio
+import httpx
 
 # Global variable to track if the user clicked to send the image
 send_image = False
@@ -17,25 +21,11 @@ def mouse_callback(event, x, y, flags, param):
         send_image = True
 
 # Initialize OpenAI clients
-# For tool calls (Qwen3-32B)
-import os
-
-# Set API key and base URL
 server_url = os.getenv("API_SERVER")
 vlm_server_url = os.getenv("API_SERVER_VLM")
 
-# Initialize the OpenAI client for llama.cpp's server
-#client = OpenAI(base_url="http://localhost:9100/v1", api_key="EMPTY")
-
-
 tool_client = OpenAI(base_url=server_url, api_key="EMPTY")
-# For image description (Gemma3-4B-IT)
 image_client = OpenAI(base_url=vlm_server_url, api_key="EMPTY")
-
-
-#tool_client = OpenAI(base_url="http://localhost:9100/v1", api_key="EMPTY")
-# For image description (Gemma3-4B-IT)
-#image_client = OpenAI(base_url="http://localhost:9000/v1", api_key="EMPTY")
 
 # Define the tools for getting the current time and capturing webcam image
 tools = [
@@ -157,20 +147,59 @@ def capture_webcam_image():
     except Exception as e:
         return {"error": f"Error capturing webcam image: {str(e)}"}
 
-import json
-
-def chat_with_qwen3():
-    user_prompts = [
-        "What do you see?, imagine you are assisting blind person locate all the objects",
-        "how should i move from here to the exit?, imagine you are assisting blind person, provide step by step instructions",
-    ]
-    messages = []
+# Function to record and transcribe audio
+def record_and_transcribe():
+    duration = 5  # seconds per chunk
+    sample_rate = 16000
+    channels = 1
 
     try:
-        for prompt in user_prompts:
-            # Add user message
-            messages.append({"role": "user", "content": prompt})
+        print("\nRecording for 5 seconds...")
+        audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=channels)
+        sd.wait()
+        print("Recording complete. Sending audio for transcription...")
 
+        wav_io = io.BytesIO()
+        wavio.write(wav_io, audio_data, sample_rate, sampwidth=2)
+        wav_io.seek(0)
+
+        files = {
+            'file': ('microphone.wav', wav_io, 'audio/wav'),
+            'model': (None, 'Systran/faster-whisper-small')
+        }
+
+        response = httpx.post('https://dwani-whisper.hf.space/v1/audio/transcriptions', files=files)
+
+        if response.status_code == 200:
+            print("Transcription:", response.text)
+            return response.text
+        else:
+            print(f"Error: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"Error during recording or transcription: {str(e)}")
+        return None
+
+# Modified chat function to use voice input
+def chat_with_qwen3():
+    messages = []
+    print("Starting voice-activated chat. Speak your prompt (5 seconds per recording). Press Ctrl+C to stop.")
+
+    try:
+        while True:
+            # Record and transcribe audio input
+            transcribed_text = record_and_transcribe()
+            if not transcribed_text:
+                print("No transcription available, skipping...")
+                continue
+
+            # Add transcribed text as user message
+            prompt = transcribed_text
+            messages.append({"role": "user", "content": prompt})
+            print(f"User (via voice): {prompt}")
+
+            # Process the prompt with the chat model
             while True:
                 response = tool_client.chat.completions.create(
                     model="Qwen3-32B",
@@ -210,6 +239,8 @@ def chat_with_qwen3():
                     messages.append({"role": "assistant", "content": response_message.content})
                     break
 
+    except KeyboardInterrupt:
+        print("\nChat stopped by user.")
     except Exception as e:
         print(f"Error occurred: {str(e)}")
 

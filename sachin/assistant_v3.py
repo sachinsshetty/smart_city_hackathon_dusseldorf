@@ -6,38 +6,21 @@ import cv2
 import os
 import tempfile
 import base64
-
-# Global variable to track if the user clicked to send the image
-send_image = False
-
-# Mouse callback function to detect click
-def mouse_callback(event, x, y, flags, param):
-    global send_image
-    if event == cv2.EVENT_LBUTTONDOWN:  # Left mouse click
-        send_image = True
+import io
+import sounddevice as sd
+import wavio
+import httpx
+import threading
+import time
 
 # Initialize OpenAI clients
-# For tool calls (Qwen3-32B)
-import os
-
-# Set API key and base URL
 server_url = os.getenv("API_SERVER")
 vlm_server_url = os.getenv("API_SERVER_VLM")
 
-# Initialize the OpenAI client for llama.cpp's server
-#client = OpenAI(base_url="http://localhost:9100/v1", api_key="EMPTY")
-
-
 tool_client = OpenAI(base_url=server_url, api_key="EMPTY")
-# For image description (Gemma3-4B-IT)
 image_client = OpenAI(base_url=vlm_server_url, api_key="EMPTY")
 
-
-#tool_client = OpenAI(base_url="http://localhost:9100/v1", api_key="EMPTY")
-# For image description (Gemma3-4B-IT)
-#image_client = OpenAI(base_url="http://localhost:9000/v1", api_key="EMPTY")
-
-# Define the tools for getting the current time and capturing webcam image
+# Define the tools
 tools = [
     {
         "type": "function",
@@ -60,7 +43,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "capture_webcam_image",
-            "description": "Capture a single frame from the default webcam, display it, and return a description on user click",
+            "description": "Capture a single frame from the default webcam and return a description",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -70,7 +53,11 @@ tools = [
     }
 ]
 
-# Function to get the current time for a given timezone using pytz
+# Shared variable to store the latest image description
+latest_image_description = {"description": "", "timestamp": None}
+description_lock = threading.Lock()
+
+# Function to get the current time for a given timezone
 def get_current_time(timezone):
     try:
         tz = pytz.timezone(timezone)
@@ -82,9 +69,8 @@ def get_current_time(timezone):
     except Exception as e:
         return {"error": f"Failed to fetch time for {timezone}: {str(e)}"}
 
-# Function to capture, display, and describe a webcam frame
+# Function to capture and describe a webcam frame
 def capture_webcam_image():
-    global send_image
     try:
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
@@ -95,23 +81,7 @@ def capture_webcam_image():
             cap.release()
             return {"error": "Failed to capture image from webcam"}
 
-        # Display the captured frame
-        cv2.namedWindow("Webcam Frame")
-        cv2.setMouseCallback("Webcam Frame", mouse_callback)
-        send_image = False  # Reset click flag
-
-        # Show the frame until clicked or 'q' is pressed
-        while True:
-            cv2.imshow("Webcam Frame", frame)
-            key = cv2.waitKey(1) & 0xFF
-            if send_image or key == ord('q'):
-                break
-
-        cv2.destroyAllWindows()
         cap.release()
-
-        if not send_image:
-            return {"error": "Image not sent (user closed window without clicking)"}
 
         # Save the frame to a temporary file
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
@@ -126,7 +96,7 @@ def capture_webcam_image():
         try:
             os.remove(temp_path)
         except Exception as e:
-            print(f"Warning: Could not delete temporary file {temp_path}: {str(e)}")
+            print(f"Warning: Could not delete temporary file {temp_path}: {str(e)}", file=sys.stderr)
 
         # Send image to Gemma3-4B-IT for description
         try:
@@ -150,28 +120,97 @@ def capture_webcam_image():
                 max_tokens=32768
             )
             description = response.choices[0].message.content
-            return {"image_path": temp_path, "description": description}
+            return {"description": description, "timestamp": time.time()}
         except Exception as e:
             return {"error": f"Failed to get image description: {str(e)}"}
 
     except Exception as e:
         return {"error": f"Error capturing webcam image: {str(e)}"}
 
-import json
+# Background thread to capture images every 10 seconds
+def background_image_capture():
+    global latest_image_description
+    while True:
+        image_data = capture_webcam_image()
+        with description_lock:
+            if "description" in image_data:
+                latest_image_description = {
+                    "description": image_data["description"],
+                    "timestamp": image_data["timestamp"]
+                }
+            # Suppress all output, including errors, to avoid clutter
+        time.sleep(10)  # Wait for 10 seconds before next capture
 
-def chat_with_qwen3():
-    user_prompts = [
-        "What do you see?, imagine you are assisting blind person locate all the objects",
-        "how should i move from here to the exit?, imagine you are assisting blind person, provide step by step instructions",
-    ]
-    messages = []
+# Function to record and transcribe audio
+def record_and_transcribe():
+    duration = 5  # seconds per chunk
+    sample_rate = 16000
+    channels = 1
 
     try:
-        for prompt in user_prompts:
-            # Add user message
+        print("\nRecording for 5 seconds... (Speak now)")
+        audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=channels)
+        sd.wait()
+        print("Recording complete. Sending audio for transcription...")
+
+        wav_io = io.BytesIO()
+        wavio.write(wav_io, audio_data, sample_rate, sampwidth=2)
+        wav_io.seek(0)
+
+        files = {
+            'file': ('microphone.wav', wav_io, 'audio/wav'),
+            'model': (None, 'Systran/faster-whisper-small')
+        }
+
+        response = httpx.post('https://dwani-whisper.hf.space/v1/audio/transcriptions', files=files)
+
+        if response.status_code == 200:
+            transcription = response.text.strip()
+            if transcription:
+                print(f"Transcription: {transcription}")
+                return transcription
+            else:
+                print("Transcription empty, please try again.")
+                return None
+        else:
+            print(f"Transcription error: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"Error during recording or transcription: {str(e)}")
+        return None
+
+# Modified chat function
+def chat_with_qwen3():
+    messages = []
+    print("Starting voice-activated continuous chat session with background image processing.")
+    print("Speak your prompt (5 seconds per recording). Press Ctrl+C to stop.")
+
+    # Start background image capture thread
+    image_thread = threading.Thread(target=background_image_capture, daemon=True)
+    image_thread.start()
+
+    try:
+        while True:
+            # Record and transcribe audio input
+            transcribed_text = record_and_transcribe()
+            if not transcribed_text or transcribed_text.isspace():
+                print("No valid transcription (empty or whitespace), waiting for next input...")
+                continue
+
+            # Get the latest image description
+            with description_lock:
+                image_description = latest_image_description["description"]
+                image_timestamp = latest_image_description["timestamp"]
+                timestamp_str = (datetime.fromtimestamp(image_timestamp).strftime('%H:%M:%S')
+                                 if image_timestamp else "No image yet")
+
+            # Combine transcribed text with the latest image description
+            prompt = f"User voice input: {transcribed_text}\nLatest image description (captured at {timestamp_str}): {image_description or 'No image description available'}"
             messages.append({"role": "user", "content": prompt})
 
-            while True:
+            # Process the prompt with the chat model
+            try:
                 response = tool_client.chat.completions.create(
                     model="Qwen3-32B",
                     messages=messages,
@@ -182,7 +221,7 @@ def chat_with_qwen3():
                 )
                 response_message = response.choices[0].message
 
-                # If there are tool calls, handle them
+                # Handle tool calls
                 if hasattr(response_message, "tool_calls") and response_message.tool_calls:
                     for tool_call in response_message.tool_calls:
                         if tool_call.function.name == "get_current_time":
@@ -203,16 +242,36 @@ def chat_with_qwen3():
                             })
                         else:
                             print(f"Unknown tool called: {tool_call.function.name}")
-                    # Continue the loop to let the model use the tool outputs
+                    # Continue processing with tool outputs
+                    response = tool_client.chat.completions.create(
+                        model="Qwen3-32B",
+                        messages=messages,
+                        tools=tools,
+                        tool_choice="auto",
+                        temperature=0.0,
+                        max_tokens=32768
+                    )
+                    response_message = response.choices[0].message
+                    print(f"{response_message.content}\n")
+                    messages.append({"role": "assistant", "content": response_message.content})
                 else:
                     # No tool calls, print and add the response
-                    print(f"Qwen3: {response_message.content}\n")
+                    print(f"{response_message.content}\n")
                     messages.append({"role": "assistant", "content": response_message.content})
-                    break
 
+            except Exception as e:
+                print(f"Error processing chat response: {str(e)}")
+                continue
+
+    except KeyboardInterrupt:
+        print("\nChat session stopped by user.")
+        with open("conversation_history.json", "w") as f:
+            json.dump(messages, f, indent=2)
+        print("Conversation history saved to 'conversation_history.json'.")
     except Exception as e:
-        print(f"Error occurred: {str(e)}")
+        print(f"Fatal error occurred: {str(e)}")
 
 # Run the chat
 if __name__ == "__main__":
+    import sys
     chat_with_qwen3()
