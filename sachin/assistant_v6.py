@@ -111,7 +111,7 @@ def capture_webcam_image():
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Describe this image."},
+                            {"type": "text", "text": "Describe this image in 2 lines or less."},
                             {
                                 "type": "image_url",
                                 "image_url": {
@@ -122,9 +122,9 @@ def capture_webcam_image():
                     }
                 ],
                 temperature=0.0,
-                max_tokens=32768
+                max_tokens=100  # Limit tokens to enforce brevity
             )
-            description = response.choices[0].message.content
+            description = "\n".join(response.choices[0].message.content.strip().split("\n")[:2])
             return {"description": description, "timestamp": time.time()}
         except Exception as e:
             return {"error": f"Failed to get image description: {str(e)}"}
@@ -224,9 +224,14 @@ def generate_and_play_speech(text):
     except Exception as e:
         print(f"Error generating speech: {str(e)}")
 
-# Modified chat function with single-line output
+# Modified chat function with system prompt and 2-line output restriction
 def chat_with_qwen3():
-    messages = []
+    # System prompt
+    system_prompt = {
+        "role": "system",
+        "content": "You are a helpful AI assistant that provides concise answers (max 1 line). Use tools when requested and combine user input with image context if available."
+    }
+    messages = [system_prompt]
     print("Voice chat active. Speak for 5s (Ctrl+C to stop).")
     # Start background image capture thread
     image_thread = threading.Thread(target=background_image_capture, daemon=True)
@@ -259,7 +264,7 @@ def chat_with_qwen3():
                     tools=tools,
                     tool_choice="auto",
                     temperature=0.0,
-                    max_tokens=32768
+                    max_tokens=100  # Limit tokens to enforce brevity
                 )
                 response_message = response.choices[0].message
 
@@ -291,17 +296,20 @@ def chat_with_qwen3():
                         tools=tools,
                         tool_choice="auto",
                         temperature=0.0,
-                        max_tokens=32768
+                        max_tokens=100  # Limit tokens to enforce brevity
                     )
                     response_message = response.choices[0].message
-                    print(f"Assistant: {response_message.content.strip()}")
-                    generate_and_play_speech(response_message.content)
-                    messages.append({"role": "assistant", "content": response_message.content})
+                    # Restrict output to 2 lines
+                    output = "\n".join(response_message.content.strip().split("\n")[:2])
+                    print(f"Assistant: {output}")
+                    generate_and_play_speech(output)
+                    messages.append({"role": "assistant", "content": output})
                 else:
                     # No tool calls, print and play the response
-                    print(f"Assistant: {response_message.content.strip()}")
-                    generate_and_play_speech(response_message.content)
-                    messages.append({"role": "assistant", "content": response_message.content})
+                    output = "\n".join(response_message.content.strip().split("\n")[:2])
+                    print(f"Assistant: {output}")
+                    generate_and_play_speech(output)
+                    messages.append({"role": "assistant", "content": output})
 
             except Exception as e:
                 print(f"Error processing response: {str(e)}")
