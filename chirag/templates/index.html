@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accessibility Analyzer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 500px; margin: auto; }
+        .suggestions { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Upload a Street Image for Accessibility Analysis</h2>
+        <form id="uploadForm">
+            <input type="file" id="imageInput" name="image" accept="image/*" required />
+            <div style="margin:10px 0;">
+                <label><input type="radio" name="improvementType" value="smart_city" checked> Smart City Improvements</label>
+                <label style="margin-left:20px;"><input type="radio" name="improvementType" value="visually_impaired"> Accessibility for Visually Impaired</label>
+            </div>
+            <button type="submit">Analyze</button>
+        </form>
+        <div class="suggestions" id="suggestions"></div>
+        <div id="finalized-image-container" style="margin-top:20px;"></div>
+    </div>
+    <script>
+        const form = document.getElementById('uploadForm');
+        const suggestionsDiv = document.getElementById('suggestions');
+        const finalizedImageContainer = document.getElementById('finalized-image-container');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            suggestionsDiv.innerHTML = 'Analyzing...';
+            finalizedImageContainer.innerHTML = '';
+            const formData = new FormData();
+            const fileInput = document.getElementById('imageInput');
+            formData.append('image', fileInput.files[0]);
+            // Get selected improvement type
+            const improvementType = document.querySelector('input[name="improvementType"]:checked').value;
+            formData.append('improvement_type', improvementType);
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.suggestions) {
+                    suggestionsDiv.innerHTML = '<h3>Suggestions:</h3><pre>' + data.suggestions + '</pre>';
+                    if (data.finalized_image_url) {
+                        finalizedImageContainer.innerHTML = `
+                            <h3>Finalized Image (Visualized Changes):</h3>
+                            <img id="finalized-image" src="${data.finalized_image_url}" style="max-width:100%;border:2px solid #333;" />
+                        `;
+                    } else {
+                        finalizedImageContainer.innerHTML = "<span style='color:red;'>No image generated.</span>";
+                    }
+                } else if (data.error) {
+                    suggestionsDiv.innerHTML = `<span style='color:red;'>${data.error}</span>`;
+                }
+            } catch (err) {
+                suggestionsDiv.innerHTML = `<span style='color:red;'>Error analyzing image.</span>`;
+            }
+        });
+    </script>
+</body>
+</html> 
