@@ -11,3 +11,6 @@ python example.py
 
 python frame_describe.py
 ```
+
+
+pip install python-fasthtml uvicorn opencv-python sounddevice wavio httpx openai
