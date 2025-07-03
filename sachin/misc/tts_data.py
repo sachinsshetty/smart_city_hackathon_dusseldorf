@@ -1,26 +1,23 @@
 from pathlib import Path
-from openai import OpenAI
 import platform
 import subprocess
 
-# Initialize OpenAI client
-openai = OpenAI(base_url="https://dwani-whisper.hf.space/v1", api_key="cant-be-empty")
-model_id = "speaches-ai/Kokoro-82M-v1.0-ONNX"
-voice_id = "af_heart"
 
-# Create speech
-res = openai.audio.speech.create(
-    model=model_id,
-    voice=voice_id,
-    input="Hello, world!, i am sachin",
-    response_format="wav",
-    speed=1,
-)
+import dwani
+import os
+
+dwani.api_key = os.getenv("DWANI_API_KEY")
+
+dwani.api_base = os.getenv("DWANI_API_BASE_URL")
+
+response = dwani.Audio.speech(input="What is your name?", response_format="wav", language="english")
+print("Audio Speech: Output saved to output.wav")
+
 
 # Save the audio to a file
 output_file = Path("output.wav")
 with output_file.open("wb") as f:
-    f.write(res.response.read())
+    f.write(response)
 
 # Autoplay the audio based on the operating system
 def play_audio(file_path):

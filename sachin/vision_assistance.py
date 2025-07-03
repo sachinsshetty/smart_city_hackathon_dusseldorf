@@ -16,6 +16,15 @@ from pathlib import Path
 import platform
 import subprocess
 
+
+import dwani
+import os
+
+dwani.api_key = os.getenv("DWANI_API_KEY")
+
+dwani.api_base = os.getenv("DWANI_API_BASE_URL")
+
+
 # Initialize OpenAI clients
 server_url = os.getenv("API_SERVER")
 vlm_server_url = os.getenv("API_SERVER_VLM")
@@ -186,19 +195,14 @@ def record_and_transcribe():
 # Function to generate and play speech
 def generate_and_play_speech(text):
     try:
-        # Create speech using TTS
-        res = tts_client.audio.speech.create(
-            model="speaches-ai/Kokoro-82M-v1.0-ONNX",
-            voice="af_heart",
-            input=text,
-            response_format="wav",
-            speed=1,
-        )
+
+        response = dwani.Audio.speech(input=text, response_format="wav", language="english")
+        
 
         # Save the audio to a temporary file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
             temp_path = temp_file.name
-            temp_file.write(res.response.read())
+            temp_file.write(response)
 
         # Play the audio based on the operating system
         system = platform.system()
