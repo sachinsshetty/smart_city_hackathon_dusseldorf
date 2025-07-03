@@ -169,24 +169,18 @@ def record_and_transcribe():
         wavio.write(wav_io, audio_data, sample_rate, sampwidth=2)
         wav_io.seek(0)
 
-        files = {
-            'file': ('microphone.wav', wav_io, 'audio/wav'),
-            'model': (None, 'Systran/faster-whisper-small')
-        }
 
-        response = httpx.post('https://dwani-whisper.hf.space/v1/audio/transcriptions', files=files)
 
-        if response.status_code == 200:
-            transcription = response.text.strip()
-            if transcription:
-                print(f"Transcribed: {transcription}")
-                return transcription
-            else:
-                print("Transcription empty, try again.")
-                return None
-        else:
-            print(f"Transcription error: {response.status_code} - {response.text}")
-            return None
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_file.write(wav_io.getvalue())
+            temp_file_path = temp_file.name
+        result = dwani.ASR.transcribe(file_path=temp_file_path, language="english")
+        import os
+        os.unlink(temp_file_path)  # Clean up the temporary file
+        print("ASR Response:", result)
+        return result["text"]
 
     except Exception as e:
         print(f"Error during recording or transcription: {str(e)}")
